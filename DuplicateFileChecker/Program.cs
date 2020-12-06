@@ -15,11 +15,26 @@ namespace DuplicateFileChecker
         static void Main(string[] args)
         {
             //Enter all paths to be searched here
-            string[] allPaths = new string[] { @"E:\Google Drive\Large Data\Alte Bilder - Wenn ein Bild verloren geht hier suchen" };
+            List<string> allPaths = new List<string>();
+            Console.WriteLine("Please enter all paths to be checked recursively, 1 path per line.");
+            string currentLine = Console.ReadLine();
+            while (currentLine != "")
+            {
+                allPaths.Add(currentLine);
+                Console.WriteLine("Path added. Add an empty line to start searching or add some more paths.");
+                currentLine = Console.ReadLine();
+            }
             List<string> allFilesList = new List<string>();
             foreach (var path in allPaths)
             {
-                allFilesList.AddRange(Directory.GetFiles(path, "*.*", SearchOption.AllDirectories));
+                try
+                {
+                    allFilesList.AddRange(Directory.GetFiles(path, "*.*", SearchOption.AllDirectories));
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Couldn't add path " + path);
+                }
             }
 
             //List of all the files in all listed directories and sub-directories
@@ -74,6 +89,24 @@ namespace DuplicateFileChecker
             //Get all groups that are actually duplicates
             var duplicates = duplicateFiles.Where(f => f.Value.Count > 1);
 
+            //Go over all duplicate groups and display them
+            foreach (var duplicate in duplicates)
+            {
+                Console.WriteLine("New Group: " + duplicate.Key.Item2);
+                foreach (var file in duplicate.Value)
+                {
+                    Console.WriteLine(file);
+                }
+                Console.WriteLine("-----------------");
+            }
+
+            Console.WriteLine("Delete everything but the first item of each group now? Enter y to continue or anything else to cancel.");
+            var continueKey = Console.ReadKey();
+            if (continueKey.Key != ConsoleKey.Y)
+            {
+                return;
+            }
+
             //Go over all duplicate groups and remove them
             foreach (var duplicate in duplicates)
             {
@@ -83,7 +116,7 @@ namespace DuplicateFileChecker
                     Console.WriteLine(file);
                 }
                 Console.WriteLine("-----------------");
-                File.Delete(duplicate.Value.First());
+                duplicate.Value.Skip(1).ToList().ForEach(l => File.Delete(l));
             }
         }
     }
