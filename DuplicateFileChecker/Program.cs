@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,87 +18,111 @@ namespace DuplicateFileChecker
             //Enter all paths to be searched here
             List<string> allPaths = new List<string>();
             Console.WriteLine("Please enter all paths to be checked recursively, 1 path per line.");
+            Console.WriteLine("Alternatively, enter the name of a .dfc file that lies in the folder of this program to start deleting cached duplicates.");
             string currentLine = Console.ReadLine();
+
+            string existingDuplicatesJson = "";
+            IEnumerable<KeyValuePair<(string, long, string), List<string>>> duplicates = null;
+
             while (currentLine != "")
             {
+                if (currentLine.EndsWith(".dfc"))
+                {
+                    existingDuplicatesJson = File.ReadAllText(currentLine);
+                    duplicates = JsonConvert.DeserializeObject<IEnumerable<KeyValuePair<(string, long, string), List<string>>>>(existingDuplicatesJson);
+                    break;
+                }
                 allPaths.Add(currentLine);
                 Console.WriteLine("Path added. Add an empty line to start searching or add some more paths.");
                 currentLine = Console.ReadLine();
             }
-            List<string> allFilesList = new List<string>();
-            foreach (var path in allPaths)
+            if (duplicates == null)
             {
-                try
+                List<string> allFilesList = new List<string>();
+                foreach (var path in allPaths)
                 {
-                    allFilesList.AddRange(Directory.GetFiles(path, "*.*", SearchOption.AllDirectories));
+                    try
+                    {
+                        allFilesList.AddRange(Directory.GetFiles(path, "*.*", SearchOption.AllDirectories));
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("Couldn't add path " + path);
+                    }
                 }
-                catch (Exception e)
+
+                //List of all the files in all listed directories and sub-directories
+                string[] allfiles = allFilesList.Distinct().ToArray();
+                Dictionary<(string, long, string), List<string>> duplicateFiles = new Dictionary<(string, long, string), List<string>>();
+                Console.WriteLine($"Found {allfiles.Length} files.");
+                double totalFiles = allfiles.Length;
+                double currentFileIndex = 0;
+
+                //Iterate through all files
+                foreach (var file in allfiles)
                 {
-                    Console.WriteLine("Couldn't add path " + path);
+                    if ((int)currentFileIndex % 1000 == 0)
+                    {
+                        Console.WriteLine($"{DateTime.Now.ToShortTimeString()}: {(currentFileIndex / totalFiles * 100):n2}% finished.");
+                    }
+                    try
+                    {
+                        //Get the file, its size, its extension and the middle 64 bytes as a semi-solid way to determine duplicates
+                        var fi = new FileInfo(file);
+                        long size = fi.Length;
+                        string extension = fi.Extension.ToLower();
+                        byte[] buffer = new byte[64];
+                        using (BinaryReader reader = new BinaryReader(new FileStream(file, FileMode.Open)))
+                        {
+                            reader.BaseStream.Seek(size / 2, SeekOrigin.Begin);
+                            reader.Read(buffer, 0, 64);
+                        }
+                        string firstBytes = new string(buffer.Select(b => b.ToString()).SelectMany(x => x).ToArray());
+                        var key = (extension, size, firstBytes);
+
+                        //Add file to list of duplicates
+                        if (duplicateFiles.ContainsKey(key))
+                        {
+                            //A file with the same key has been found already, add it to the group
+                            //Console.WriteLine($"Found a duplicate: {file}");
+                            duplicateFiles[key].Add(file);
+                        }
+                        else
+                        {
+                            //The key is unique at this point, add a new group
+                            duplicateFiles.Add(key, new List<string>() { file });
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"Encountered error: {e}.\nFile in question: {file}");
+                    }
+                    currentFileIndex++;
                 }
+
+                //Get all groups that are actually duplicates
+                duplicates = duplicateFiles.Where(f => f.Value.Count > 1);
+
+                //Go over all duplicate groups and display them
+                foreach (var duplicate in duplicates)
+                {
+                    Console.WriteLine("New Group: " + duplicate.Key.Item2);
+                    foreach (var file in duplicate.Value)
+                    {
+                        Console.WriteLine(file);
+                    }
+                    Console.WriteLine("-----------------");
+                }
+
+                //Write findings to file
+                existingDuplicatesJson = JsonConvert.SerializeObject(duplicates);
+                string fileName = $"{DateTime.Now.ToString("yyyy-MM-dd")}-{Guid.NewGuid().ToString().Substring(0, 4)}.dfc";
+                File.WriteAllText(fileName, existingDuplicatesJson);
+                Console.WriteLine($"The file {fileName} has been written, which contains all the aforementioned duplicates. You can use it to delete the duplicates later without having to search through all files again.");
             }
-
-            //List of all the files in all listed directories and sub-directories
-            string[] allfiles = allFilesList.Distinct().ToArray();
-            Dictionary<(string, long, string), List<string>> duplicateFiles = new Dictionary<(string, long, string), List<string>>();
-            Console.WriteLine($"Found {allfiles.Length} files.");
-            double totalFiles = allfiles.Length;
-            double currentFileIndex = 0;
-
-            //Iterate through all files
-            foreach (var file in allfiles)
+            else
             {
-                if ((int)currentFileIndex % 1000 == 0)
-                {
-                    Console.WriteLine($"{DateTime.Now.ToShortTimeString()}: {(currentFileIndex / totalFiles * 100):n2}% finished.");
-                }
-                try
-                {
-                    //Get the file, its size, its extension and the middle 64 bytes as a semi-solid way to determine duplicates
-                    var fi = new FileInfo(file);
-                    long size = fi.Length;
-                    string extension = fi.Extension.ToLower();
-                    byte[] buffer = new byte[64];
-                    using (BinaryReader reader = new BinaryReader(new FileStream(file, FileMode.Open)))
-                    {
-                        reader.BaseStream.Seek(size / 2, SeekOrigin.Begin);
-                        reader.Read(buffer, 0, 64);
-                    }
-                    string firstBytes = new string(buffer.Select(b => b.ToString()).SelectMany(x => x).ToArray());
-                    var key = (extension, size, firstBytes);
-
-                    //Add file to list of duplicates
-                    if (duplicateFiles.ContainsKey(key))
-                    {
-                        //A file with the same key has been found already, add it to the group
-                        //Console.WriteLine($"Found a duplicate: {file}");
-                        duplicateFiles[key].Add(file);
-                    }
-                    else
-                    {
-                        //The key is unique at this point, add a new group
-                        duplicateFiles.Add(key, new List<string>() { file });
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Encountered error: {e}.\nFile in question: {file}");
-                }
-                currentFileIndex++;
-            }
-
-            //Get all groups that are actually duplicates
-            var duplicates = duplicateFiles.Where(f => f.Value.Count > 1);
-
-            //Go over all duplicate groups and display them
-            foreach (var duplicate in duplicates)
-            {
-                Console.WriteLine("New Group: " + duplicate.Key.Item2);
-                foreach (var file in duplicate.Value)
-                {
-                    Console.WriteLine(file);
-                }
-                Console.WriteLine("-----------------");
+                Console.WriteLine($"Found {duplicates.Count()} duplicates in the cache file.");
             }
 
             Console.WriteLine("Delete everything but the first item of each group now? Enter y to continue or anything else to cancel.");
@@ -118,6 +143,7 @@ namespace DuplicateFileChecker
                 Console.WriteLine("-----------------");
                 duplicate.Value.Skip(1).ToList().ForEach(l => File.Delete(l));
             }
+
         }
     }
 }
