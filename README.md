@@ -2,6 +2,7 @@
 Takes a list of paths and searches for duplicate files by comparing filesize, fileextension and 64 bytes from the middle of the file.
 This heuristic may not be useful to everyone but it is optimized to deal with large chunks of media files like images and videos, without checking each file against every other file.
 Works pretty fast and reliable.
+False positives are definitely possible, but highly unlikely for media files.
 
 ## Usage
 0. Clone the project and open the .sln file in Visual Studio (not Visual Studio Code, but that might also work)
