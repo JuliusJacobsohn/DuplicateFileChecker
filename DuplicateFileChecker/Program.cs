@@ -141,7 +141,12 @@ namespace DuplicateFileChecker
                     Console.WriteLine(file);
                 }
                 Console.WriteLine("-----------------");
-                duplicate.Value.Skip(1).ToList().ForEach(l => File.Delete(l));
+                duplicate.Value
+                    .OrderBy(d => d.Contains(")") || d.Contains("("))
+                    .ThenByDescending(d => d.Length)
+                    .Skip(1)
+                    .ToList()
+                    .ForEach(l => File.Delete(l));
             }
 
         }
